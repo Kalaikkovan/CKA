@@ -1,0 +1,184 @@
+#Generic commands
+kubectl options 
+kubectl explain Resourcename<deployment> --recursive # this will print the format of the resource in yaml 
+kubectl api-resources # this gives us the list of api resources , shortnames of it and apiversion its part of , and its kind
+kubectl get events
+#--To create a POD 
+kubectl run nginx --image=nginx
+#with labels
+kubectl run redis --image=redis --labels=tier=db
+#create POD and expose
+kubectl run custom-nginx --image=nginx --port=8080
+#Create the pod and expose which will create the service
+kubectl run nginx --image=nginx --port 80 --expose
+#To list based on selector & Labels
+kubectl get pods --show-labels # to print the pods with labels
+kubectl get pods podname -c #it prints the different containers running inside pod
+kubectl get pods --selector run=nginx  # to get the right pod based on label name
+kubectl get pods -l run=nginx
+kubectl get pods -l run=nginx,app=web,tier=frontend # to print the pods with multiple labels
+kubectl get -o json pod nginx # to print the pod in specific format 
+kubectl get -o yaml pod nginx | grep label
+kubectl get pod podname -o yaml >pod.yaml # This will pring the yaml format from running pod - we can edit later 
+kubectl explain pod --recursive | grep envFrom -A5 # This will print the format of pod 
+
+kubectl set image pod webapp webapp=httpd:2 #to update the image on existing running pod
+
+#POD definition file 
+kubectl create -f pod.yaml
+kubectl create -f . # to execute all files that are existing on the folder
+
+# This will print the skeleton of POD spec file in yaml format
+Kubectl explain pod --recursive | grep -A5 tolerations  #this grep will print first 5 lines after the word specified
+
+
+#--To create a manifest file 
+kubectl run nginx --image=nginx  --dry-run=client -o yaml > pod.yaml
+
+#--Create a deployment
+kubectl create deployment --image=nginx nginx
+kubectl create deployment --image=nginx nginx --dry-run -o yaml
+kubectl create deployment nginx --image=nginx --replicas=4
+kubectl create deployment nginx-deployment --image=nginx --replicas=4 --dry-run=client -o yaml > nginx-deployment-auto.yaml
+kubectl create deployment myapp --image=nginx --replicas=2 --dry-run=client -o yaml > myapp-deployment.yaml
+#--To Scale the replicas on deployment
+kubectl scale deployment nginx --replicas=4
+kubectl rollout status deployment deployment_name #this prints status of the current deployment
+kubectl rollout history deployment deployment_name # this gives us number of revisions made
+kubectl set image deployment deployment_name nginx=nginx:1.9.1 # this will change the running container image but actual definitoion file carries the old image namge
+#Rollback
+kubectl rollout undo deployment deployment_name
+
+#--Create a Service named redis-service of type ClusterIP to expose pod redis on port 6379
+kubectl expose pod redis --port=6379 --name redis-service --dry-run=client -o yaml
+kubectl create service clusterip redis --tcp=6379:6379 --dry-run=client -o yaml 
+
+#--Create a Service named nginx of type NodePort to expose pod nginx's port 80 on port 30080 on the nodes:
+
+kubectl expose pod nginx --port=80 --name nginx-service --type=NodePort --dry-run=client -o yaml
+kubectl create service nodeport nginx --tcp=80:80 --node-port=30080 --dry-run=client -o yaml
+kubectl expose deployment hr-web-app --type=NodePort --port=8080 --name=hr-web-app-service --dry-run -o yaml > hr-web-app-service.yaml
+
+#--created Live 
+#step1 - 
+kubectl create deployment myapp --image=nginx --replicas=2 --dry-run=client -o yaml > myapp-deployment.yaml
+kubectl create -f myapp-deployment.yaml
+
+#step2 
+kubectl create service nodeport myapp --tcp=80:80 --node-port=30080 --dry-run=client -o yaml > myapp-service.yaml
+kubectl create service clusterip myapp --tcp=80:80 --dry-run=client -o yaml >myapp-clusterIP.yaml
+
+#expose the pod to create a service
+kubectl expose pod redis --name redis-service --port 6379 --target-port 6379 
+#Create the pod and expose which will create the service
+kubectl run nginx --image=nginx --port 80 --expose
+
+#Daemon set
+kubectl get ds --all-namespaces
+
+#Important - Querying
+kubectl get nodes -o jsonpath='{.items[*].status.nodeInfo.osImage}'
+
+#Log checks & performance monitoring
+kubectl top node
+kubectl top pod 
+kubectl logs podname 
+kubectl logs -f podname # print live streaming of logs
+kubectl logs podname -c #this will pring the containers name
+kubectl logs podname container_name # container name to specify explicitly if there are multiple containers in the pod
+
+#Config Map
+kubectl create cm app-config ---from-literal=retry-count=5 --from-literal=retry-wait-period=10 --dry-run=client -o yaml
+kubectl create cm app-config-v1 --from-file=./app.properties --dry-run=client -o yaml # from config file
+
+# Cluster Maintenance
+kubectl drain node02 --force --ignore-daemonsets # To drain the nodes forcefully and ignore daemonsets
+kubectl cordon node02  # this will remove from the scheduler - so no new pods will be scheduled on this node
+kubectl uncordon node02
+
+kubectl version --short #to print the version
+#Upgrade cluster  version 
+kubectl drain master --ignore-daemonsets
+sudo apt install kubeadm=1.20.2-00
+kubeadm upgrade plan
+kubeadm upgrade apply v1.20.2
+sudo apt install kubelet=1.20.2
+#on worker node - repeat the same steps
+kubeadm upgrade node #instead of kubeadm upgrade apply v1.20.2
+
+
+# Backup & Restore 
+#1. Resource config file 
+kubectl get all --all-namespaces -o yaml >resource-backup.yaml 
+
+#2. ETCD Cluster backup
+# to take backup etcd db
+sudo ETCDCTL_API=3 etcdctl snapshot save snapshot.db \
+--endpoints=https://127.0.0.1:2379 \
+--cacert=/etc/kubernetes/pki/etcd/ca.crt \
+--cert=/etc/kubernetes/pki/etcd/server.crt \
+--key=/etc/kubernetes/pki/etcd/server.key
+
+#to check if this is working
+sudo ETCDCTL_API=3 etcdctl snapshot member list \
+--endpoints=https://127.0.0.1:2379 \
+--cacert=/etc/kubernetes/pki/etcd/ca.crt \
+--cert=/etc/kubernetes/pki/etcd/server.crt \
+--key=/etc/kubernetes/pki/etcd/server.key
+
+sudo ETCDCTL_API=3 etcdctl snapshot restore snapshot.db \
+--data-dir /var/lib/etcd-from-backup
+
+#Security 
+openssl x509 -in <certificate path> -text  # to view the content of certs
+
+openssl genrsa -out kalai.key 2048 #to generate private key
+openssl req -new -key kalai.key -subj "/CN=kalai" -out kalai.csr #create CSR file 
+
+cat kalai.csr | base64 | tr -d "\n"  # convert into base 64 format
+#Create yaml file for csr
+kubectl get csr #to view the csr 
+kubectl certificate approve kalai #to approve the csr
+
+#config file 
+Kubectl config view # to view the current config file
+Kubectl config view --kubeconfig=my-config
+kubectl config use-context prod-user@production #to change the current context
+
+
+#RBAC
+kubectl get roles
+kubectl get rolebindings
+
+kubectl auth can-i create deployments #to get the authorization level
+kubectl auth can-i delete no --as test -n kube-system #to check if particular user has access 
+
+kubectl get clusterroles
+kubectl get clusterrolebindings
+
+#Network Policy
+kubectl get netpol
+
+
+#Volume
+Kubectl exec webapp -- cat /log/app/log #to view the logs of respective pod
+kubectl get pv
+kubectl get pvc
+
+#Networking
+ip -n red addr add 192.168.1.10/24 dev veth-red
+ip addr 
+ip netns
+ip -n containerid addr
+ip -n containerid link
+iptables -nvL -t nat
+ip route
+ip route add 192.168.1.10/24 dev etho
+arp
+netstat -plnt
+route
+ip link show docker0 
+ip route show default
+
+kubectl logs weave-net-2zqxd weave -n kube-system #to view the logs of networking
+kubectl logs weave-net-2zqxd -c weave -n kube-system | head #to see the ip allocation
